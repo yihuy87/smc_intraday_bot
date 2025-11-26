@@ -290,7 +290,7 @@ def get_usdt_pairs(max_pairs: int) -> List[str]:
                 qv = 0.0
             vol_map[sym] = qv
 
-    # 3) Filter volume >= 5 juta USDT
+    # 3) Filter volume >= 3 juta USDT
     min_vol = 3_000_000.0
     filtered = [s for s in usdt_symbols if vol_map.get(s, 0.0) >= min_vol]
 
