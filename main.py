@@ -258,18 +258,54 @@ def broadcast_signal(text: str):
 # ================== BINANCE PAIRS ==================
 
 def get_usdt_pairs(max_pairs: int) -> List[str]:
-    url = f"{BINANCE_REST_URL}/api/v3/exchangeInfo"
-    r = requests.get(url, timeout=10)
+    """
+    Ambil semua pair USDT yang statusnya TRADING,
+    lalu filter hanya yang 24h quote volume >= 5.000.000 USDT.
+    """
+    # 1) Ambil info symbol (base/quote + status)
+    info_url = f"{BINANCE_REST_URL}/api/v3/exchangeInfo"
+    r = requests.get(info_url, timeout=10)
     r.raise_for_status()
-    data = r.json()
+    info = r.json()
 
-    symbols = []
-    for s in data["symbols"]:
+    usdt_symbols = []
+    for s in info["symbols"]:
         if s["status"] == "TRADING" and s["quoteAsset"] == "USDT":
-            symbols.append(s["symbol"].lower())
+            usdt_symbols.append(s["symbol"])  # huruf besar
 
-    symbols = sorted(symbols)
-    return symbols[:max_pairs]
+    # 2) Ambil 24h ticker semua symbol (sekali request)
+    ticker_url = f"{BINANCE_REST_URL}/api/v3/ticker/24hr"
+    r2 = requests.get(ticker_url, timeout=10)
+    r2.raise_for_status()
+    tickers = r2.json()  # list of dict
+
+    vol_map: Dict[str, float] = {}
+    for t in tickers:
+        sym = t.get("symbol")
+        if sym in usdt_symbols:
+            # quoteVolume = volume dalam USDT
+            try:
+                qv = float(t.get("quoteVolume", "0"))
+            except ValueError:
+                qv = 0.0
+            vol_map[sym] = qv
+
+    # 3) Filter volume >= 5 juta USDT
+    min_vol = 5_000_000.0
+    filtered = [s for s in usdt_symbols if vol_map.get(s, 0.0) >= min_vol]
+
+    # 4) Urutkan dari volume terbesar → terkecil, lalu batasi max_pairs
+    filtered_sorted = sorted(filtered, key=lambda s: vol_map.get(s, 0.0), reverse=True)
+
+    # pakai huruf kecil seperti sebelumnya
+    symbols_lower = [s.lower() for s in filtered_sorted]
+
+    if max_pairs > 0:
+        symbols_lower = symbols_lower[:max_pairs]
+
+    print(f"Filter volume >= {min_vol:,.0f} USDT → {len(symbols_lower)} pair.")
+    return symbols_lower
+
 
 
 # ================== SIGNAL MESSAGE ==================
