@@ -25,4 +25,7 @@ MAX_USDT_PAIRS = 1000
 MIN_TIER_TO_SEND = "A"  # balanced default
 
 # Cooldown default antar sinyal per pair (detik)
-SIGNAL_COOLDOWN_SECONDS = 900  # 15 menit
+SIGNAL_COOLDOWN_SECONDS = 1800  # 30 menit
+
+# Refresh interval untuk daftar pair (jam)
+REFRESH_PAIR_INTERVAL_HOURS = 24  # satuan jam

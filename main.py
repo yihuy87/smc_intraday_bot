@@ -21,6 +21,7 @@ from config import (
     MAX_USDT_PAIRS,
     MIN_TIER_TO_SEND,
     SIGNAL_COOLDOWN_SECONDS,
+    REFRESH_PAIR_INTERVAL_HOURS,
 )
 from smc_logic import analyse_symbol
     # pastikan file smc_logic.py ada
@@ -824,16 +825,25 @@ async def run_bot():
 
     print(f"Loaded {len(state.subscribers)} subscribers, {len(state.vip_users)} VIP users.")
 
-    print("Mengambil list USDT pairs...")
-    symbols = get_usdt_pairs(MAX_USDT_PAIRS)
-    print(f"Scan {len(symbols)} pair:", ", ".join(s.upper() for s in symbols))
-
-    streams = "/".join([f"{s}@kline_5m" for s in symbols])
-    ws_url = f"{BINANCE_STREAM_URL}?streams={streams}"
+    # ====== NEW: variabel untuk refresh pair ======
+    symbols: List[str] = []
+    last_pairs_refresh: float = 0.0
+    refresh_interval = REFRESH_PAIR_INTERVAL_HOURS * 3600  # jumlah jam di kalikan 3600 detik
 
     # loop untuk reconnect stabil
     while state.running:
         try:
+            # refresh daftar pair jika kosong atau sudah lewat jam interval
+            now = time.time()
+            if not symbols or (now - last_pairs_refresh) > refresh_interval:
+                print("Refresh daftar pair USDT berdasarkan volume...")
+                symbols = get_usdt_pairs(MAX_USDT_PAIRS)
+                last_pairs_refresh = now
+                print(f"Scan {len(symbols)} pair:", ", ".join(s.upper() for s in symbols))
+
+            streams = "/".join([f"{s}@kline_5m" for s in symbols])
+            ws_url = f"{BINANCE_STREAM_URL}?streams={streams}"
+
             print("Menghubungkan ke WebSocket...")
             async with websockets.connect(ws_url) as ws:
                 print("WebSocket terhubung.")
@@ -843,6 +853,11 @@ async def run_bot():
                     print("Bot dalam mode STANDBY. Gunakan /startscan untuk mulai scan.\n")
 
                 while state.running:
+                    # Kalau sudah lewat jam interval sejak refresh pair → break, reconnect dengan list baru
+                    if time.time() - last_pairs_refresh > refresh_interval:
+                        print("24 jam berlalu → refresh daftar pair & reconnect WebSocket...")
+                        break
+
                     msg = await ws.recv()
                     data = json.loads(msg)
 
@@ -898,6 +913,7 @@ async def run_bot():
             await asyncio.sleep(5)
 
     print("run_bot selesai karena state.running = False")
+
 
 
 if __name__ == "__main__":
