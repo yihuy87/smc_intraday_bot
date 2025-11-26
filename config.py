@@ -15,6 +15,9 @@ TELEGRAM_ADMIN_USERNAME = os.getenv("TELEGRAM_ADMIN_USERNAME", "")
 BINANCE_REST_URL = "https://api.binance.com"
 BINANCE_STREAM_URL = "wss://stream.binance.com:9443/stream"
 
+# Filtering volume minimum (dalam USDT)
+MIN_VOLUME_USDT = 1_000_000.0
+
 # Berapa banyak pair USDT yang discan
 MAX_USDT_PAIRS = 1000
 

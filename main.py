@@ -17,6 +17,7 @@ from config import (
     TELEGRAM_ADMIN_USERNAME,
     BINANCE_REST_URL,
     BINANCE_STREAM_URL,
+    MIN_VOLUME_USDT,
     MAX_USDT_PAIRS,
     MIN_TIER_TO_SEND,
     SIGNAL_COOLDOWN_SECONDS,
@@ -261,7 +262,7 @@ def broadcast_signal(text: str):
 def get_usdt_pairs(max_pairs: int) -> List[str]:
     """
     Ambil semua pair USDT yang statusnya TRADING,
-    lalu filter hanya yang 24h quote volume >= 3.000.000 USDT.
+    lalu filter hanya yang 24h quote volume >= MIN_VOLUME_USDT USDT.
     """
     # 1) Ambil info symbol (base/quote + status)
     info_url = f"{BINANCE_REST_URL}/api/v3/exchangeInfo"
@@ -291,8 +292,8 @@ def get_usdt_pairs(max_pairs: int) -> List[str]:
                 qv = 0.0
             vol_map[sym] = qv
 
-    # 3) Filter volume >= 3 juta USDT
-    min_vol = 3_000_000.0
+    # 3) Filter volume >= dalam USDT
+    min_vol = MIN_VOLUME_USDT
     filtered = [s for s in usdt_symbols if vol_map.get(s, 0.0) >= min_vol]
 
     # 4) Urutkan dari volume terbesar → terkecil, lalu batasi max_pairs
