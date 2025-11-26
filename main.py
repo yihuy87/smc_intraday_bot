@@ -4,9 +4,9 @@ import asyncio
 import json
 import os
 import time
+import threading
 from typing import List, Optional, Dict, Set
 from dataclasses import dataclass, field
-import threading
 
 import requests
 import websockets
@@ -21,11 +21,13 @@ from config import (
     SIGNAL_COOLDOWN_SECONDS,
 )
 from smc_logic import analyse_symbol
+    # pastikan file smc_logic.py ada
 from smc_scoring import score_smc_signal, tier_from_score, should_send_tier
 
-
+# ===== FILE DATA PERSISTENT =====
 SUBSCRIBERS_FILE = "subscribers.json"
 VIP_FILE = "vip_users.json"
+STATE_FILE = "bot_state.json"
 
 
 # ================== GLOBAL STATE ==================
@@ -98,6 +100,7 @@ def save_vip_users():
 
 
 def is_vip(user_id: int) -> bool:
+    """VIP jika expiry_ts > sekarang, atau jika dia admin."""
     now = time.time()
     if TELEGRAM_ADMIN_ID and str(user_id) == str(TELEGRAM_ADMIN_ID):
         return True
@@ -106,6 +109,7 @@ def is_vip(user_id: int) -> bool:
 
 
 def cleanup_expired_vip():
+    """Hapus VIP yang sudah kedaluwarsa dari memori + file."""
     now = time.time()
     expired_ids = [uid for uid, exp in state.vip_users.items() if exp <= now]
     if not expired_ids:
@@ -116,9 +120,45 @@ def cleanup_expired_vip():
     print("VIP expired dihapus otomatis:", expired_ids)
 
 
+def load_bot_state():
+    """Load scanning/min_tier/cooldown dari file (jika ada)."""
+    if not os.path.exists(STATE_FILE):
+        return
+    try:
+        with open(STATE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        state.scanning = bool(data.get("scanning", False))
+        state.min_tier = data.get("min_tier", state.min_tier)
+        state.cooldown_seconds = int(data.get("cooldown_seconds", state.cooldown_seconds))
+        print(
+            f"Bot state loaded: scanning={state.scanning}, "
+            f"min_tier={state.min_tier}, cooldown={state.cooldown_seconds}"
+        )
+    except Exception as e:
+        print("Gagal load bot_state:", e)
+
+
+def save_bot_state():
+    """Simpan scanning/min_tier/cooldown ke file."""
+    try:
+        data = {
+            "scanning": state.scanning,
+            "min_tier": state.min_tier,
+            "cooldown_seconds": state.cooldown_seconds,
+        }
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except Exception as e:
+        print("Gagal simpan bot_state:", e)
+
+
 # ================== TELEGRAM ==================
 
-def send_telegram(text: str, chat_id: Optional[int] = None, reply_markup: dict | None = None) -> None:
+def send_telegram(
+    text: str,
+    chat_id: Optional[int] = None,
+    reply_markup: Optional[dict] = None,
+) -> None:
     if not TELEGRAM_TOKEN:
         print("Telegram token belum di-set.")
         return
@@ -146,7 +186,7 @@ def send_telegram(text: str, chat_id: Optional[int] = None, reply_markup: dict |
         print("Error kirim Telegram:", e)
 
 
-def get_user_keyboard():
+def get_user_keyboard() -> dict:
     return {
         "inline_keyboard": [
             [
@@ -164,7 +204,7 @@ def get_user_keyboard():
     }
 
 
-def get_admin_keyboard():
+def get_admin_keyboard() -> dict:
     return {
         "inline_keyboard": [
             [
@@ -373,7 +413,7 @@ def handle_command(cmd: str, args: list, chat_id: int):
             )
             return
 
-        # other user commands ignored
+        # other user commands
         send_telegram("Perintah tidak dikenali. Gunakan tombol atau /start.", chat_id)
         return
 
@@ -384,6 +424,7 @@ def handle_command(cmd: str, args: list, chat_id: int):
             send_telegram("ℹ️ Scan sudah *AKTIF*.", chat_id)
         else:
             state.scanning = True
+            save_bot_state()
             send_telegram("▶️ Scan market *dimulai*.", chat_id)
         return
 
@@ -392,6 +433,7 @@ def handle_command(cmd: str, args: list, chat_id: int):
             send_telegram("ℹ️ Scan sudah *PAUSE*.", chat_id)
         else:
             state.scanning = False
+            save_bot_state()
             send_telegram("⏸️ Scan market *dijeda*.", chat_id)
         return
 
@@ -426,6 +468,7 @@ def handle_command(cmd: str, args: list, chat_id: int):
         else:
             send_telegram("Mode tidak dikenali. Gunakan: aplus | a | b", chat_id)
             return
+        save_bot_state()
         send_telegram(f"⚙️ Mode tier di-set ke: *{state.min_tier}*.", chat_id)
         return
 
@@ -442,6 +485,7 @@ def handle_command(cmd: str, args: list, chat_id: int):
             if cd < 0:
                 raise ValueError
             state.cooldown_seconds = cd
+            save_bot_state()
             send_telegram(f"⏲️ Cooldown di-set ke {cd} detik.", chat_id)
         except ValueError:
             send_telegram("Format salah. Gunakan: /cooldown 300", chat_id)
@@ -692,10 +736,14 @@ def telegram_command_loop():
 
                     print(f"[TELEGRAM CB] {from_id} {data_cb}")
 
-                    # jawab callback biar loading hilang
+                    # jawab callback biar loading di Telegram hilang
                     try:
                         answer_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/answerCallbackQuery"
-                        requests.post(answer_url, data={"callback_query_id": callback_id}, timeout=10)
+                        requests.post(
+                            answer_url,
+                            data={"callback_query_id": callback_id},
+                            timeout=10,
+                        )
                     except Exception as e:
                         print("Error answerCallbackQuery:", e)
 
@@ -710,10 +758,12 @@ def telegram_command_loop():
 # ================== MAIN SCAN LOOP (BINANCE WS) ==================
 
 async def run_bot():
+    # load data persistent
     state.subscribers = load_subscribers()
     state.vip_users = load_vip_users()
     state.daily_date = time.strftime("%Y-%m-%d")
     cleanup_expired_vip()
+    load_bot_state()
 
     print(f"Loaded {len(state.subscribers)} subscribers, {len(state.vip_users)} VIP users.")
 
@@ -724,13 +774,16 @@ async def run_bot():
     streams = "/".join([f"{s}@kline_5m" for s in symbols])
     ws_url = f"{BINANCE_STREAM_URL}?streams={streams}"
 
+    # loop untuk reconnect stabil
     while state.running:
         try:
             print("Menghubungkan ke WebSocket...")
             async with websockets.connect(ws_url) as ws:
                 print("WebSocket terhubung.")
-                print("Bot dalam mode STANDBY.")
-                print("Gunakan /startscan di Telegram untuk mulai scan.\n")
+                if state.scanning:
+                    print("Scan sebelumnya AKTIF → melanjutkan scan otomatis.")
+                else:
+                    print("Bot dalam mode STANDBY. Gunakan /startscan untuk mulai scan.\n")
 
                 while state.running:
                     msg = await ws.recv()
@@ -745,6 +798,8 @@ async def run_bot():
 
                     if not is_closed or not symbol:
                         continue
+
+                    # jika scanning False → abaikan data, WS tetap hidup
                     if not state.scanning:
                         continue
 
@@ -789,6 +844,7 @@ async def run_bot():
 
 
 if __name__ == "__main__":
+    # Jalankan loop command Telegram di thread terpisah
     cmd_thread = threading.Thread(target=telegram_command_loop, daemon=True)
     cmd_thread.start()
 
