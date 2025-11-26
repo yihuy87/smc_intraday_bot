@@ -8,6 +8,8 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 # ID admin utama (chat_id Telegram kamu)
 TELEGRAM_ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID", "")
+# username admin utama
+TELEGRAM_ADMIN_USERNAME = os.getenv("TELEGRAM_ADMIN_USERNAME", "")
 
 # === BINANCE ===
 BINANCE_REST_URL = "https://api.binance.com"

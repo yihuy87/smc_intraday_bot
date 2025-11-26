@@ -14,6 +14,7 @@ import websockets
 from config import (
     TELEGRAM_TOKEN,
     TELEGRAM_ADMIN_ID,
+    TELEGRAM_ADMIN_USERNAME,
     BINANCE_REST_URL,
     BINANCE_STREAM_URL,
     MAX_USDT_PAIRS,
@@ -611,7 +612,7 @@ def handle_callback(data_cb: str, from_id: int, chat_id_cq: int):
             "• Fokus pada Tier tinggi\n"
             "• Masa aktif default 30 hari\n\n"
             "Hubungi admin untuk upgrade:\n"
-            f"`{TELEGRAM_ADMIN_ID}` (Forward pesan /mystatus kamu).",
+            f"`{TELEGRAM_ADMIN_USERNAME}` (Forward pesan /mystatus kamu).",
             chat_id_cq,
         )
         return
