@@ -67,15 +67,15 @@ def tier_from_score(score: int) -> str:
     """
     Mapping score → Tier
     - A+ : >= 120
-    - A  : 90–119
-    - B  : 75–89
-    - NONE : < 75
+    - A  : 100–119
+    - B  : 80–99
+    - NONE : < 80
     """
     if score >= 120:
         return "A+"
-    elif score >= 90:
+    elif score >= 100:
         return "A"
-    elif score >= 75:
+    elif score >= 80:
         return "B"
     return "NONE"
 
